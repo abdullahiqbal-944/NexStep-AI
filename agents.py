@@ -4,6 +4,7 @@ from models import (
     ResearchItem,
     UserProfile,
 )
+
 from gemini_service import GeminiService
 
 
@@ -13,6 +14,36 @@ class NexStepAI:
 
         self.llm = GeminiService()
 
+    # =========================================================
+    # Helper
+    # =========================================================
+
+    @staticmethod
+    def _format_additional_information(
+        additional_information
+    ):
+
+        if not additional_information:
+            return "No additional information provided."
+
+        lines = []
+
+        for key, value in additional_information.items():
+
+            if value is None:
+                continue
+
+            if isinstance(value, str) and not value.strip():
+                continue
+
+            lines.append(
+                f"{key}: {value}"
+            )
+
+        if not lines:
+            return "No additional information provided."
+
+        return "\n".join(lines)
 
     # =========================================================
     # 1. GOAL UNDERSTANDING AGENT
@@ -25,7 +56,7 @@ class NexStepAI:
     ):
 
         prompt = f"""
-Analyze this user's goal.
+Analyze this user's real-world goal.
 
 USER GOAL:
 {goal}
@@ -34,6 +65,7 @@ USER PROFILE:
 Name: {profile.name}
 Age: {profile.age}
 Country: {profile.country}
+Nationality: {profile.nationality}
 Education: {profile.education}
 Field: {profile.field}
 GPA: {profile.gpa}
@@ -51,13 +83,31 @@ Return JSON:
     "warnings": []
 }}
 
+IMPORTANT:
+
+The "missing_information" array is an INTERNAL
+machine-readable field list.
+
+Use stable snake_case identifiers such as:
+
+country_of_citizenship_or_residence
+target_intake_or_academic_year
+grading_scale_maximum
+work_or_research_experience
+german_language_proficiency
+planned_ielts_test_date
+
+Do NOT put full natural-language questions in this field.
+
 Rules:
 
 - Do not invent user information.
-- Identify missing information.
-- Keep the goal generic enough to work for scholarships,
-  jobs, admissions, visas, businesses, certifications,
-  competitions and government programs.
+- Identify information that is genuinely necessary.
+- Only request information that could affect eligibility,
+  research or planning.
+- Keep the system generic enough for scholarships,
+  admissions, visas, jobs, internships, certifications,
+  government services, travel and other real-world goals.
 """
 
         data = self.llm.generate_json(
@@ -89,11 +139,11 @@ Rules:
         )
 
         case.next_step = (
-            "Start research to discover official requirements."
+            "Review the additional information needed "
+            "to make your case more accurate."
         )
 
         return case
-
 
     # =========================================================
     # 2. RESEARCH AGENT
@@ -102,10 +152,17 @@ Rules:
     def research_case(
         self,
         case,
+        additional_information=None,
     ):
 
+        additional_information_text = (
+            self._format_additional_information(
+                additional_information
+            )
+        )
+
         prompt = f"""
-Research the following case:
+Research the following real-world case.
 
 GOAL:
 {case.goal}
@@ -118,6 +175,9 @@ LOCATION:
 
 DEADLINE:
 {case.deadline}
+
+USER'S ADDITIONAL INFORMATION:
+{additional_information_text}
 
 Find:
 
@@ -149,6 +209,8 @@ Every important factual item should have a source URL
 when possible.
 
 Prioritize official sources.
+
+Do not invent requirements.
 """
 
         data = self.llm.generate_json(
@@ -191,11 +253,11 @@ Prioritize official sources.
         case.research = items
 
         case.next_step = (
-            "Check whether you meet the researched eligibility requirements."
+            "Check whether you meet the researched "
+            "eligibility requirements."
         )
 
         return case
-
 
     # =========================================================
     # 3. ELIGIBILITY AGENT
@@ -205,6 +267,7 @@ Prioritize official sources.
         self,
         case,
         profile,
+        additional_information=None,
     ):
 
         research_text = "\n".join(
@@ -212,6 +275,12 @@ Prioritize official sources.
                 f"{item.title}: {item.summary}"
                 for item in case.research
             ]
+        )
+
+        additional_information_text = (
+            self._format_additional_information(
+                additional_information
+            )
         )
 
         prompt = f"""
@@ -227,6 +296,9 @@ Field: {profile.field}
 GPA: {profile.gpa}
 Experience: {profile.experience}
 Skills: {profile.skills}
+
+ADDITIONAL USER INFORMATION:
+{additional_information_text}
 
 CASE:
 {case.goal}
@@ -252,6 +324,7 @@ NEEDS VERIFICATION
 Rules:
 
 - Never assume missing information.
+- Use the additional user information when relevant.
 - If an important fact is unknown, use UNCERTAIN
   or NEEDS VERIFICATION.
 - Explain the reasoning clearly.
@@ -277,11 +350,11 @@ Rules:
         )
 
         case.next_step = (
-            "Identify and prepare the documents required for the application."
+            "Identify and prepare the documents required "
+            "for the application."
         )
 
         return case
-
 
     # =========================================================
     # 4. DOCUMENT AGENT
@@ -358,7 +431,6 @@ complete or authentic.
 
         return case
 
-
     # =========================================================
     # 5. VERIFICATION AGENT
     # =========================================================
@@ -428,7 +500,6 @@ Prefer official sources.
 
         return case
 
-
     # =========================================================
     # 6. PLANNING AGENT
     # =========================================================
@@ -437,6 +508,7 @@ Prefer official sources.
         self,
         case,
         profile,
+        additional_information=None,
     ):
 
         research_text = "\n".join(
@@ -454,6 +526,12 @@ Prefer official sources.
             ]
         )
 
+        additional_information_text = (
+            self._format_additional_information(
+                additional_information
+            )
+        )
+
         prompt = f"""
 Create a practical personalized action plan.
 
@@ -468,6 +546,9 @@ GPA: {profile.gpa}
 Experience: {profile.experience}
 Skills: {profile.skills}
 Deadline: {profile.deadline}
+
+ADDITIONAL USER INFORMATION:
+{additional_information_text}
 
 RESEARCH:
 {research_text}
