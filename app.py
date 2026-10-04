@@ -817,10 +817,11 @@ elif page == "🎯 Define Goal":
             )
 
             if case.research:
-          st.write(
-             "You can now continue from the "
-            "**Research** or **Eligibility** sections."
-         )
+
+                st.write(
+                    "You can now continue from the "
+                    "**Research** or **Eligibility** sections."
+                )
 
 
 # ============================================================
