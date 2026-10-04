@@ -1,10 +1,9 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Dict, Any
 
 
 @dataclass
 class UserProfile:
-
     name: str = ""
     age: int = 0
     country: str = ""
@@ -19,7 +18,6 @@ class UserProfile:
 
 @dataclass
 class ResearchItem:
-
     title: str
     summary: str
     category: str = ""
@@ -29,7 +27,6 @@ class ResearchItem:
 
 @dataclass
 class ActionTask:
-
     title: str
     description: str
     priority: int = 5
@@ -47,8 +44,18 @@ class CaseState:
     location: str = ""
     deadline: str = ""
 
+    # IMPORTANT:
+    # This remains the internal AI field-name list.
+    # The UI converts these into human-readable questions.
     missing_information: List[str] = field(
         default_factory=list
+    )
+
+    # User answers to the missing-information questions.
+    # This is separate from missing_information so the
+    # original agent schema is not broken.
+    missing_information_answers: Dict[str, Any] = field(
+        default_factory=dict
     )
 
     research: List[ResearchItem] = field(
