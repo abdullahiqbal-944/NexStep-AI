@@ -1,154 +1,137 @@
-import json
-import os
-
-import streamlit as st
-from google import genai
+from dataclasses import dataclass, field
+from typing import List, Dict, Any
 
 
-def get_api_key():
-    """Get Gemini API key from Streamlit Secrets or environment."""
+@dataclass
+class UserProfile:
+    name: str = ""
+    age: int = 0
+    country: str = ""
+    nationality: str = ""
+    education: str = ""
+    field: str = ""
+    gpa: str = ""
+    experience: str = ""
+    skills: str = ""
+    deadline: str = ""
 
-    try:
-        key = st.secrets.get("GEMINI_API_KEY", "")
 
-        if key:
-            return key
-
-    except Exception:
-        pass
-
-    return os.getenv("GEMINI_API_KEY", "")
+@dataclass
+class ResearchItem:
+    title: str
+    summary: str
+    category: str = ""
+    source_url: str = ""
+    source_type: str = "Unknown"
 
 
-class GeminiService:
+@dataclass
+class ActionTask:
+    title: str
+    description: str
+    priority: int = 5
+    why_it_matters: str = ""
+    deadline: str = ""
+    completed: bool = False
 
-    def __init__(self):
 
-        api_key = get_api_key()
+@dataclass
+class CaseState:
 
-        if not api_key:
-            raise RuntimeError(
-                "GEMINI_API_KEY is not configured. "
-                "Add it to Streamlit Secrets."
+    goal: str = ""
+
+    goal_type: str = ""
+    location: str = ""
+    deadline: str = ""
+
+    # IMPORTANT:
+    # This remains the internal AI field-name list.
+    # The UI converts these into human-readable questions.
+    missing_information: List[str] = field(
+        default_factory=list
+    )
+
+    # User answers to the missing-information questions.
+    # This is separate from missing_information so the
+    # original agent schema is not broken.
+    missing_information_answers: Dict[str, Any] = field(
+        default_factory=dict
+    )
+
+    research: List[ResearchItem] = field(
+        default_factory=list
+    )
+
+    eligibility_status: str = ""
+
+    eligibility_summary: str = ""
+
+    eligibility_requirements: List[str] = field(
+        default_factory=list
+    )
+
+    document_requirements: List[dict] = field(
+        default_factory=list
+    )
+
+    uploaded_documents: List[str] = field(
+        default_factory=list
+    )
+
+    verifications: List[dict] = field(
+        default_factory=list
+    )
+
+    action_plan: List[ActionTask] = field(
+        default_factory=list
+    )
+
+    next_step: str = ""
+
+    progress: int = 0
+
+    warnings: List[str] = field(
+        default_factory=list
+    )
+
+    def update_progress(self):
+
+        if not self.action_plan:
+
+            self.progress = 0
+
+            self.next_step = (
+                "Generate your personalized action plan."
             )
 
-        self.client = genai.Client(
-            api_key=api_key
+            return
+
+        completed = sum(
+            task.completed
+            for task in self.action_plan
         )
 
-        # Current model for new Gemini API users
-        self.model = os.getenv(
-            "GEMINI_MODEL",
-            "gemini-3.8-flash"
+        self.progress = int(
+            completed / len(self.action_plan) * 100
         )
 
-    def generate(
-        self,
-        prompt,
-        use_search=False
-    ):
-        """Generate normal text using Gemini Interactions API."""
+        pending = [
+            task
+            for task in self.action_plan
+            if not task.completed
+        ]
 
-        kwargs = {
-            "model": self.model,
-            "input": prompt,
-        }
-
-        if use_search:
-            kwargs["tools"] = [
-                {
-                    "type": "google_search"
-                }
-            ]
-
-        interaction = self.client.interactions.create(
-            **kwargs
+        pending.sort(
+            key=lambda x: x.priority
         )
 
-        return interaction.output_text
+        if pending:
 
-    def generate_json(
-        self,
-        prompt,
-        use_search=False
-    ):
-        """
-        Ask Gemini to return JSON.
+            self.next_step = pending[0].title
 
-        We intentionally parse the response ourselves so
-        the same method works with the Interactions API.
-        """
+        else:
 
-        search_instruction = ""
-
-        if use_search:
-
-            search_instruction = """
-Use Google Search to research current information.
-
-Prioritize:
-
-1. Official government websites
-2. Official university websites
-3. Official organization websites
-4. Reliable secondary sources
-
-Do not invent requirements or URLs.
-"""
-
-        full_prompt = f"""
-You are an expert AI case manager.
-
-{search_instruction}
-
-Return ONLY valid JSON.
-
-Do not use markdown.
-Do not use ```json.
-Do not add explanations before or after the JSON.
-
-{prompt}
-"""
-
-        kwargs = {
-            "model": self.model,
-            "input": full_prompt,
-        }
-
-        if use_search:
-
-            kwargs["tools"] = [
-                {
-                    "type": "google_search"
-                }
-            ]
-
-        interaction = self.client.interactions.create(
-            **kwargs
-        )
-
-        text = interaction.output_text.strip()
-
-        # Remove accidental markdown fences
-        if text.startswith("```json"):
-            text = text[7:]
-
-        if text.startswith("```"):
-            text = text[3:]
-
-        if text.endswith("```"):
-            text = text[:-3]
-
-        text = text.strip()
-
-        try:
-
-            return json.loads(text)
-
-        except json.JSONDecodeError as e:
-
-            raise RuntimeError(
-                "Gemini returned invalid JSON.\n\n"
-                f"Gemini response:\n{text}\n\n"
-                f"JSON error: {e}"
+            self.next_step = (
+                "🎉 All current tasks are complete. "
+                "Review your case for any remaining requirements."
             )
