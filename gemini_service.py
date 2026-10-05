@@ -152,5 +152,3 @@ Do not add explanations before or after the JSON.
                 f"Gemini response:\n{text}\n\n"
                 f"JSON error: {e}"
             )
-
-        
